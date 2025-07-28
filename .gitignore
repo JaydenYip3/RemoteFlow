@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+dist/
+build/
+
+# Env files
+.env
+.env.*
+
+# Log files
+*.log
+
+# Editor configs
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Optional: lock files (only if you don’t want to track them, but usually you should)
+# package-lock.json
+# yarn.lock
