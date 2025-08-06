@@ -13,7 +13,7 @@ export default function Home() {
             Manage and control your devices remotely with our advanced monitoring system
           </p>
         </div>
-        <Card className="border-border shadow-lg bg-card">
+        <Card className="border-border shadow-lg bg-card h-[calc(100vh-20rem)]">
           <CardContent className="p-6">
             <Devices />
           </CardContent>

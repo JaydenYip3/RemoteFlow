@@ -1,6 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from traceback import print_tb
+
+import paramiko
+from sqlalchemy import true
+from schemas import EditDevicePayload, Device, LoginDevicePayload
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from models import Device, availableDevices, devices
+from models import availableDevices, devices
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
@@ -8,6 +13,10 @@ import os, time
 import jwt
 from database import SessionLocal, engine
 from models import Base
+from wakeonlan import send_magic_packet
+
+
+import asyncio
 
 # Create tables once
 Base.metadata.create_all(bind=engine)
@@ -137,11 +146,42 @@ async def add_device(device: Device):
     else:
         return {"device_added": False}
 
+@app.get("/get-device/{id}")
+def get_device(id: int):
+    db = SessionLocal()
+    print(id)
+    device = db.query(devices).filter(devices.id == id).first()
+    return {"device": device}
+
 @app.get("/get-devices")
 async def get_devices():
     db = SessionLocal()
-    all_devices = db.query(devices).all()
-    return {"devices": all_devices}
+    try:
+        all_devices = db.query(devices).all()
+        devices_list = []
+        for device in all_devices:
+            # Update device status with ping
+            if ping(device.ip):
+                device.status = True
+            else:
+                device.status = False
+
+            # Convert to dictionary for JSON serialization
+            device_dict = {
+                "id": device.id,
+                "ip": device.ip,
+                "name": device.name,
+                "OS": device.OS,
+                "status": device.status,
+                "deviceUsername": device.deviceUsername,
+                "MAC": device.MAC
+            }
+            devices_list.append(device_dict)
+
+        db.commit()  # Save updated status to database
+        return {"devices": devices_list}
+    finally:
+        db.close()
 
 @app.get("/get-ips")
 async def get_ips():
@@ -160,33 +200,101 @@ def sign_in(password: str):
 
 
 def ping(ip: str):
-    response_time = ping(ip)
-    if response_time:
-        return True
-    else:
+    import subprocess
+    import platform
+    try:
+        # Different ping commands for different OS
+        if platform.system().lower() == 'windows':
+            result = subprocess.run(['ping', '-n', '1', '-w', '1000', ip], capture_output=True, timeout=1)
+        elif platform.system().lower() == 'darwin':
+            # macOS
+            result = subprocess.run(['ping', '-c', '1', '-W', '1000', ip], capture_output=True, timeout=1)
+        else:
+            # Linux
+            result = subprocess.run(['ping', '-c', '1', '-W', '1', ip], capture_output=True, timeout=1)
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        return False
+    except Exception:
         return False
 
 
 @app.post("/wake-device")
 def wake(device: Device):
     db = SessionLocal()
-    device = db.query(availableDevices).filter(availableDevices.ip == device.ip).first()
-    MAC = device.MAC
+    try:
 
-    send_magic_packet(MAC)
+        if ping(device.ip):
+            return {"message": "Device already woken up"}
 
-    time.sleep(5)
+        device_record = db.query(devices).filter(devices.ip == device.ip).first()
+        if not device_record:
+            raise HTTPException(status_code=404, detail="Device not found")
 
-    if ping(device.ip):
-        return {"message": "Device woken up"}
-    else:
-        return {"message": "Device not woken up"}
+        MAC = device_record.MAC
+        if not MAC:
+            raise HTTPException(status_code=400, detail="Device MAC address not available")
+
+        send_magic_packet(MAC)
+
+        time.sleep(5)
+
+        if ping(device.ip):
+            return {"message": "Device woken up"}
+        else:
+            return {"message": "Device not woken up"}
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
 
 
 @app.post("/edit-device")
-def edit_device(device: Device, name: str):
+def edit_device(payload: EditDevicePayload):
     db = SessionLocal()
-    device = db.query(devices).filter(devices.ip == device.ip).first()
-    device.name = name
+    device = db.query(devices).filter(devices.ip == payload.device.ip).first()
+    device.name = payload.name
     db.commit()
     return {"message": "Device edited"}
+
+@app.post("/delete-device")
+async def delete_device(request: Request):
+    data = await request.json()
+    ip = data.get("ip")
+    db = SessionLocal()
+    device = db.query(devices).filter(devices.ip == ip).first()
+    db.delete(device)
+    db.commit()
+    return {"message": "Device deleted"}
+
+@app.post("/login-device")
+def loginDevice(payload: LoginDevicePayload):
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        ssh.connect(
+            hostname=payload.device.ip,
+            port=22,
+            username=payload.device.deviceUsername,
+            password=payload.password,
+        )
+        ssh.close()
+        return {"message": True}
+    except paramiko.AuthenticationException:
+        return {"message": False}
+    except paramiko.SSHException as e:
+        return {"message": False}
+    except Exception as e:
+        return {"message": False}
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Message received: {data}")
+
+

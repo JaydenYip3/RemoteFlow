@@ -5,7 +5,6 @@ type Device = {
     OS: string;
     status: boolean;
     deviceUsername: string;
-    MAC: string;
 }
 
 export default Device;
