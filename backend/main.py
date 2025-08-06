@@ -147,9 +147,8 @@ async def add_device(device: Device):
         return {"device_added": False}
 
 @app.get("/get-device/{id}")
-def get_device(id: int):
+def get_device(id: str):
     db = SessionLocal()
-    print(id)
     device = db.query(devices).filter(devices.id == id).first()
     return {"device": device}
 
@@ -270,25 +269,29 @@ async def delete_device(request: Request):
 
 @app.post("/login-device")
 def loginDevice(payload: LoginDevicePayload):
-
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
         ssh.connect(
-            hostname=payload.device.ip,
+            hostname=payload.ip,
             port=22,
-            username=payload.device.deviceUsername,
+            username=payload.username,
             password=payload.password,
+            timeout=5,
+            look_for_keys=False,  # Disable key-based auth
+            allow_agent=False,    # Disable SSH agent
+            disabled_algorithms={'pubkeys': ['rsa-sha2-256', 'rsa-sha2-512']}  # Force password auth
         )
         ssh.close()
         return {"message": True}
+
     except paramiko.AuthenticationException:
-        return {"message": False}
+        return {"message": False, "error": "Authentication failed."}
     except paramiko.SSHException as e:
-        return {"message": False}
+        return {"message": False, "error": f"SSH error: {str(e)}"}
     except Exception as e:
-        return {"message": False}
+        return {"message": False, "error": f"Unexpected error: {str(e)}"}
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):

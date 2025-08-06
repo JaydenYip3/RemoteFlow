@@ -2,6 +2,7 @@
 
 import Device from "@/types/device";
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,9 @@ export default function DevicePage() {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
     const [passwordModal, setPasswordModal] = useState(true)
     const [error, setError] = useState("")
-    const path = window.location.pathname;
-    const id = path.split('/').pop();
+    const params = useParams();
+    const id = params.id as string;
     const [device, setDevice] = useState<Device | null>(null);
-    console.log(id, device)
 
     useEffect(() => {
         const fetchDevice = async () => {
@@ -27,14 +27,14 @@ export default function DevicePage() {
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
 
-        console.log(device)
         const login = await fetch(`${API_BASE_URL}/login-device`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                device: device,
+                ip: device?.ip,
+                username: device?.deviceUsername,
                 password: (e.target as HTMLFormElement).password.value
             })
         })
@@ -54,8 +54,8 @@ export default function DevicePage() {
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Enter Password</DialogTitle>
-                        <form onSubmit={handleSubmit}>
-                            <Input name="password" placeholder="Password" />
+                        <form onSubmit={handleSubmit} className="flex flex-col gap-2">
+                            <Input name="password" type="password" placeholder="Password" />
                             <div className="flex flex-row gap-2 w-full">
                             <Button className="flex-1" type="submit">Submit</Button>
                         </div>
