@@ -13,5 +13,6 @@ class EditDevicePayload(BaseModel):
     name: str
 
 class LoginDevicePayload(BaseModel):
-    device: Device
+    ip: str
+    username: str
     password: str
