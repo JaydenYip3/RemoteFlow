@@ -47,6 +47,7 @@ export default function AddDeviceModal({ open, onOpenChange }: AddDeviceModalPro
         return response.ok ? true : false;
     }
 
+
     async function testValid(e: React.FormEvent) {
         e.preventDefault();
         setIsLoading(true);
@@ -99,6 +100,7 @@ export default function AddDeviceModal({ open, onOpenChange }: AddDeviceModalPro
                         Connect a new device to your remote control center
                     </DialogDescription>
                 </DialogHeader>
+
 
                 <form className="space-y-4" onSubmit={testValid}>
                     <div className="space-y-2">
