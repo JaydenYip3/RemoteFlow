@@ -4,6 +4,7 @@ import React, {useEffect, useState } from 'react';
 import AddDeviceButton from "./Add_device";
 import AddDeviceModal from "./AddDeviceModal";
 import EditDeviceModal from "./EditDeviceModal";
+import ErrorModal from "./ErrorModal";
 import { Spinner } from '@/components/ui/spinner';
 import { Card, CardContent } from '@/components/ui/card';
 import { Monitor, Pencil } from 'lucide-react';
@@ -13,20 +14,35 @@ import { useRouter } from 'next/navigation';
 export default function Devices() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isErrorModalOpen, setIsErrorModalOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [errorTitle, setErrorTitle] = useState('Error');
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [devices, setDevices] = useState([]);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
+  const showError = (message: string, title: string = 'Error') => {
+    setError(message);
+    setErrorTitle(title);
+    setIsErrorModalOpen(true);
+  };
+
   useEffect(() => {
     const fetchDevices = async () => {
       try {
         const response = await fetch(`${API_BASE_URL}/get-devices`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch devices: ${response.status} ${response.statusText}`);
+        }
         const data = await response.json();
         setDevices(data.devices || []);
       } catch (error) {
-        console.error('Error fetching devices:', error);
+        showError(
+          error instanceof Error ? error.message : 'Failed to fetch devices. Please check your connection and try again.',
+          'Device Fetch Error'
+        );
         setDevices([]);
       } finally {
         setIsLoading(false);
@@ -36,17 +52,44 @@ export default function Devices() {
   }, [isModalOpen, isEditModalOpen, API_BASE_URL]);
 
   const handleWake = async (device: Device) => {
-    await fetch(`${API_BASE_URL}/wake-device`, {
+    try {
+      const response = await fetch(`${API_BASE_URL}/wake-device`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(device),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to wake device: ${response.status} ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error waking device:', error);
+      showError(
+        error instanceof Error ? error.message : 'Failed to wake device. Please check your connection and try again.',
+        'Wake Device Error'
+      );
+    }
+  }
+
+  const handleConnect = async (device: Device) => {
+    const response = await fetch(`${API_BASE_URL}/ping-device`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(device),
+      body: JSON.stringify({ip: device.ip}),
     });
-  }
-
-  const handleConnect = async (device: Device) => {
-    router.push(`/device/${device.id}`);
+    const data = await response.json();
+    if (data.message) {
+      router.push(`/device/${device.id}`);
+    } else {
+      showError(
+        `Device "${device.name}" is currently offline. Please wake the device first or check its network connection.`,
+        'Device Offline'
+      );
+    }
   }
   const handleEditClick = (device: Device) => {
     setSelectedDevice(device);
@@ -121,6 +164,13 @@ export default function Devices() {
         open={isEditModalOpen}
         onOpenChange={setIsEditModalOpen}
         device={selectedDevice as Device}
+      />
+
+      <ErrorModal
+        open={isErrorModalOpen}
+        onOpenChange={setIsErrorModalOpen}
+        error={error}
+        title={errorTitle}
       />
     </div>
   );

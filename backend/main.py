@@ -2,6 +2,7 @@ from traceback import print_tb
 
 import paramiko
 from sqlalchemy import true
+from sqlalchemy.orm import session
 from schemas import EditDevicePayload, Device, LoginDevicePayload
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,7 +15,8 @@ import jwt
 from database import SessionLocal, engine
 from models import Base
 from wakeonlan import send_magic_packet
-
+import asyncssh
+import asyncio, json
 
 import asyncio
 
@@ -149,8 +151,17 @@ async def add_device(device: Device):
 @app.get("/get-device/{id}")
 def get_device(id: str):
     db = SessionLocal()
-    device = db.query(devices).filter(devices.id == id).first()
-    return {"device": device}
+    try:
+        device = db.query(devices).filter(devices.id == id).first()
+        if not device:
+            return {"device": None, "error": f"Device with ID {id} not found"}
+
+        if not ping(device.ip):
+            return {"device": None, "error": f"Device: {device.deviceUsername} is not online"}
+
+        return {"device": device}
+    finally:
+        db.close()
 
 @app.get("/get-devices")
 async def get_devices():
@@ -196,6 +207,12 @@ def sign_in(password: str):
         return {"token": token}
     else:
         raise HTTPException(status_code=401, detail="Invalid password")
+
+@app.post("/ping-device")
+async def ping_device(request: Request):
+    data = await request.json()
+    ip = data.get("ip")
+    return {"message": ping(ip)}
 
 
 def ping(ip: str):
@@ -269,6 +286,7 @@ async def delete_device(request: Request):
 
 @app.post("/login-device")
 def loginDevice(payload: LoginDevicePayload):
+
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -292,12 +310,123 @@ def loginDevice(payload: LoginDevicePayload):
         return {"message": False, "error": f"SSH error: {str(e)}"}
     except Exception as e:
         return {"message": False, "error": f"Unexpected error: {str(e)}"}
+IDLE_TIMEOUT = 300  # 5 minutes
+@app.websocket("/ws/ssh")
+async def ws_ssh(ws: WebSocket):
+    await ws.accept()
+    conn = None
+    chan = None
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        await websocket.send_text(f"Message received: {data}")
+    async def ssh_to_ws():
+        """Pump SSH output to browser as binary frames."""
+        try:
+            while True:
+                # Read from SSH process stdout
+                data = await chan.stdout.read(4096)
+                if not data:
+                    break
+                # Send as binary frames to preserve formatting
+                await ws.send_bytes(data)
+        except Exception as e:
+            print(f"SSH to WS error: {e}")
 
+    try:
+        # 1) Expect first message to be JSON auth
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=20.0)
+        print(f"Received auth data: {raw}")
+        auth = json.loads(raw)
+        print(f"Parsed auth: {auth}")
 
+        host = auth.get("ip")
+        user = auth.get("username")
+        password = auth.get("password")
+
+        # Validate all required fields are present
+        if not host or not user or not password:
+            missing = []
+            if not host: missing.append("ip")
+            if not user: missing.append("username")
+            if not password: missing.append("password")
+            await ws.send_text(f"Missing required fields: {', '.join(missing)}")
+            return
+
+        print(f"Attempting SSH connection to {user}@{host}")
+
+        # 2) Connect via SSH with password
+        conn = await asyncssh.connect(
+            host=host,
+            username=user,
+            password=password,
+            known_hosts=None,  # DEV ONLY. Remove for host key checking.
+        )
+
+        # Create an interactive shell process
+        chan = await conn.create_process(
+            term_type="xterm-256color",
+            term_size=(80, 24),
+            encoding=None  # Use binary mode
+        )
+
+        # 3) Start background task to forward SSH->WS
+        pump = asyncio.create_task(ssh_to_ws())
+
+        # 4) Main loop: WS->SSH
+        last = asyncio.get_event_loop().time()
+        while True:
+            try:
+                msg = await asyncio.wait_for(ws.receive(), timeout=5.0)
+            except asyncio.TimeoutError:
+                if asyncio.get_event_loop().time() - last > IDLE_TIMEOUT:
+                    await ws.send_text("\r\n[Idle timeout]\r\n")
+                    break
+                continue
+
+            last = asyncio.get_event_loop().time()
+
+            if "bytes" in msg:
+                # Binary data from client - write directly as bytes
+                data = msg["bytes"]
+                chan.stdin.write(data)  # Write to process stdin
+
+            elif "text" in msg:
+                text = msg["text"]
+                try:
+                    # Check if it's a control message
+                    ctrl = json.loads(text)
+                    if ctrl.get("type") == "resize":
+                        cols = int(ctrl["cols"])
+                        rows = int(ctrl["rows"])
+                        chan.change_terminal_size(cols, rows)
+                        print(f"Resized terminal to {cols}x{rows}")
+                except json.JSONDecodeError:
+                    # Not JSON - shouldn't happen but handle it
+                    print(f"Received non-JSON text: {text}")
+                    chan.stdin.write(text.encode('utf-8'))
+                except Exception as e:
+                    print(f"Control message error: {e}")
+
+        pump.cancel()
+        try:
+            await pump
+        except asyncio.CancelledError:
+            pass
+
+    except asyncio.TimeoutError:
+        await ws.send_text("Authentication timeout")
+    except WebSocketDisconnect:
+        print("WebSocket disconnected")
+    except Exception as e:
+        print(f"WebSocket SSH error: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            await ws.send_text(f"Error: {str(e)}")
+        except:
+            pass
+    finally:
+        if chan:
+            chan.terminate()
+            await chan.wait()
+        if conn:
+            conn.close()
+            await conn.wait_closed()
