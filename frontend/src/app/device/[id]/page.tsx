@@ -87,12 +87,22 @@ export default function DevicePage() { const API_BASE_URL = process.env.NEXT_PUB
     }
 
     return (
-        <div className="flex flex-col items-center justify-center h-full">
+        <div className="min-h-screen bg-background p-6">
             {passwordModal?
                 <>
                 </>
             :
-                <Console auth={auth} />
+                <div className="max-w-6xl mx-auto space-y-4">
+                    <button
+                        onClick={() => route.push('/')}
+                        className="flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-lg text-foreground hover:bg-accent transition-colors"
+                    >
+                        ← Home
+                    </button>
+                    <div className="h-[calc(100vh-8rem)]">
+                        {auth && <Console auth={auth} />}
+                    </div>
+                </div>
             }
             <Dialog open={passwordModal} onOpenChange={() => setError("Need to enter password")}>
                 <DialogContent>
