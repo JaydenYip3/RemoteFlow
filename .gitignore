@@ -33,4 +33,4 @@ __pycache__/
 Thumbs.db
 
 # Lock files
-package-lock.json
+package-lock.jsonbackend/devices.db
