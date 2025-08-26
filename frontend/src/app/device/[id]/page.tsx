@@ -16,7 +16,8 @@ const Console = dynamic(() => import('@/components/TerminalComponent'), {
   loading: () => <div>Loading terminal...</div>
 })
 
-export default function DevicePage() { const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+export default function DevicePage() {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
     const [passwordModal, setPasswordModal] = useState(true)
     const [error, setError] = useState("")
     const params = useParams();

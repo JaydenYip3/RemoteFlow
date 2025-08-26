@@ -1,16 +1,18 @@
 from traceback import print_tb
 
+import secrets
 import paramiko
 from sqlalchemy import true
 from sqlalchemy.orm import session
 from schemas import EditDevicePayload, Device, LoginDevicePayload
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Response
 from fastapi.middleware.cors import CORSMiddleware
 from models import availableDevices, devices
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
 import os, time
+from datetime import datetime, timedelta
 import jwt
 from database import SessionLocal, engine
 from models import Base
@@ -28,11 +30,61 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins, adjust as needed
+    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Specific origins for credentials
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods, adjust as needed
     allow_headers=["*"],  # Allows all headers, adjust as needed
 )
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+
+
+
+@app.post("/login")
+async def login(request: Request):
+    load_dotenv()
+    data = await request.json()
+    password = data.get("password")
+    
+    if password == os.getenv("WEB_PASSWORD"):
+        # Create JWT payload with proper claims
+        now = datetime.utcnow()
+        payload = {
+            "sid": secrets.token_hex(16),  # Session ID
+            "iat": int(now.timestamp()),   # Issued at
+            "exp": int((now + timedelta(minutes=30)).timestamp()),  # Expires in 30 minutes
+            "sub": "web_session"           # Subject
+        }
+
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+        response = Response(content='{"Status": true}', media_type="application/json")
+        response.set_cookie(
+            key="session",
+            value=token,
+            httponly=True,
+            secure=False,  # Set to False for development (localhost)
+            max_age=60 * 30,
+            samesite="lax",
+            domain=None,  # Allow cookie to work across localhost/127.0.0.1
+            path="/"
+        )
+        return response
+
+    else:
+        return {"Status": False}
+
+
+
+
+
+
+@app.post("/logout")
+async def logout():
+    response = Response(content='{"Status": true}', media_type="application/json")
+    response.delete_cookie(key="session", samesite="lax")
+    return response
+
 
 @app.get("/")
 async def read_root():
@@ -311,6 +363,7 @@ def loginDevice(payload: LoginDevicePayload):
     except Exception as e:
         return {"message": False, "error": f"Unexpected error: {str(e)}"}
 IDLE_TIMEOUT = 300  # 5 minutes
+
 @app.websocket("/ws/ssh")
 async def ws_ssh(ws: WebSocket):
     await ws.accept()

@@ -13,6 +13,17 @@ build/
 # Log files
 *.log
 
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # Editor configs
 .vscode/
 .idea/
@@ -21,6 +32,5 @@ build/
 .DS_Store
 Thumbs.db
 
-# Optional: lock files (only if you don’t want to track them, but usually you should)
-# package-lock.json
-# yarn.lock
+# Lock files
+package-lock.json
