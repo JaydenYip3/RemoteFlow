@@ -20,7 +20,6 @@ __pycache__/
 *.pyd
 
 # Database files
-*.db
 *.sqlite
 *.sqlite3
 
