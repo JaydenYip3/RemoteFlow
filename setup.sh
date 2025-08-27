@@ -11,6 +11,18 @@ fi
 echo "📦 Setting up backend..."
 cd backend
 
+# Create backend .env file if it doesn't exist
+if [ ! -f ".env" ]; then
+    echo "📝 Creating backend .env file..."
+    cat > .env << EOF
+USER_LOGIN_USERNAME=your_username
+USER_LOGIN_PASSWORD=your_password
+WEB_PASSWORD=your_web_password
+SECRET_KEY=your_secret_key_here
+EOF
+    echo "✅ Backend .env created with placeholder values"
+fi
+
 # Remove existing venv if it exists
 if [ -d "venv" ]; then
     echo "🧹 Removing existing virtual environment..."
@@ -44,6 +56,16 @@ cd ..
 
 echo "📦 Setting up frontend..."
 cd frontend
+
+# Create frontend .env file if it doesn't exist
+if [ ! -f ".env" ]; then
+    echo "📝 Creating frontend .env file..."
+    cat > .env << EOF
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+JWT_SECRET_KEY=your_jwt_secret_key_here
+EOF
+    echo "✅ Frontend .env created with placeholder values"
+fi
 
 # Remove existing node_modules if they exist
 if [ -d "node_modules" ]; then
