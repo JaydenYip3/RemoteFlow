@@ -19,7 +19,7 @@ Added devices will look like this:
 
 For accessing the terminal, the device will have to be online and ready to go. Once booted the user may press the control button then it will ask for the system's password.
 
-<img width="1168" height="1245" alt="image" src="https://github.com/user-attachments/assets/85d7d9d0-14fb-4602-a8dd-370ae04885d7" />
+<img width="1183" height="1234" alt="image" src="https://github.com/user-attachments/assets/f87e357d-e31e-4a10-bd90-c2c3b3bef117" />
 
 This is a websocket connection directly to the backend which has a remote connection using asyncssh.
 
