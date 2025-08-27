@@ -36,6 +36,10 @@ pip install --only-binary=:all: paramiko asyncssh
 echo "🔧 Installing remaining dependencies..."
 pip install -r requirements.txt
 
+# Install playwright browsers
+echo "🎭 Installing playwright browsers..."
+playwright install
+
 cd ..
 
 echo "📦 Setting up frontend..."

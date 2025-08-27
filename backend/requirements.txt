@@ -23,5 +23,8 @@ asyncssh
 httpx==0.28.1
 aiohttp==3.9.5
 
+# Browser automation
+playwright==1.49.1
+
 # Utilities
 python-dotenv==1.0.1
